@@ -57,8 +57,8 @@ const UNSEEN_BOSS_FACTOR := 1.5
 const MAGIC_PER_SOUL := 3
 
 ## Survivor XP: per point of room danger beaten, and per wave made it home.
-const XP_PER_DANGER := 0.5
-const XP_PER_WAVE := 2.0
+const XP_PER_DANGER := 0.25
+const XP_PER_WAVE := 1.0
 ## A group camps at a rest area when this wounded or this small.
 const CAMP_WOUNDS := 0.5
 const CAMP_MIN_SIZE := 3
