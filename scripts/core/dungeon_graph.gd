@@ -14,6 +14,8 @@ enum NodeKind { ENTRY, ROOM, STAIR, BOSS }
 
 ## Magic cost to build a new room by size.
 const BUILD_COST := { Room.Size.SMALL: 4, Room.Size.MEDIUM: 7, Room.Size.LARGE: 12 }
+## Magic cost of a teleport stair (a small stairwell fitted with a teleport bind).
+const TELEPORT_COST := 10
 
 
 class DNode:
@@ -156,6 +158,25 @@ func build_room(from_id: String, size: Room.Size, to_id: String = "", name: Stri
 	link(from_id, n.id)
 	if to_id != "":
 		link(n.id, to_id)
+	return n
+
+
+## Player action: a stairwell off `from_id` that drops straight to a deeper floor
+## (skipping the ones between) and binds the groups that use it, so they start
+## there next time. The bait for a "secret corridor".
+func build_teleport(from_id: String, target_floor: int) -> DNode:
+	var from := node_at(from_id)
+	assert(from != null and from.kind != NodeKind.BOSS, "build_teleport: bad origin")
+	assert(target_floor > from.floor and target_floor < floors.size() - 1, "build_teleport: target must be a deeper non-boss floor")
+	_built_rooms += 1
+	var room := Room.new("Teleport stair %d" % _built_rooms, Room.Size.SMALL)
+	var stair := StructuralElement.stair()
+	stair.modifier_slots = maxi(stair.modifier_slots, 1)
+	stair.add_modifier(ContentLibrary.get_def("mod_teleport"))
+	room.add_structural(stair)
+	var n := _add_node("built_%d" % _built_rooms, NodeKind.STAIR, from.floor, room)
+	link(from_id, n.id)
+	link(n.id, floors[target_floor].entry_id)
 	return n
 
 

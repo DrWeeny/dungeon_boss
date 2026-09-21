@@ -4,7 +4,7 @@ extends Node
 ## for the UI. All rules live in GameSession so they stay testable headless.
 
 signal changed
-signal wave_finished(result: WaveSim.WaveResult)
+signal wave_finished(results: Array)   # of WaveSim.WaveResult, one per party
 
 var session: GameSession
 
@@ -53,10 +53,17 @@ func build_room(from_id: String, size: Room.Size, to_id: String = "") -> bool:
 	return n != null
 
 
-func run_wave() -> WaveSim.WaveResult:
+func build_teleport(from_id: String, target_floor: int) -> bool:
+	var n := session.build_teleport(from_id, target_floor)
+	if n != null:
+		changed.emit()
+	return n != null
+
+
+func run_wave() -> Array:
 	if session.game_over:
-		return null
-	var res := session.run_wave()
-	wave_finished.emit(res)
+		return []
+	var results := session.run_wave()
+	wave_finished.emit(results)
 	changed.emit()
-	return res
+	return results

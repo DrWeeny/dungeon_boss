@@ -15,6 +15,7 @@ const CHEST_TIER_REWARD := 4.0
 const SARCO_REWARD := 5.0
 const SARCO_MONSTER_DANGER := 5.0   # a mummy crawls out
 const SARCO_MONSTER_CHANCE := 0.5
+const SARCO_TIER := 2
 
 var kind: Kind
 var modifier_slots: int = 0          # upgradeable track (door starts 0, chest starts 0 extra)
@@ -107,8 +108,27 @@ func roll_gamble(rng: RandomNumberGenerator) -> Dictionary:
 	if kind != Kind.SARCOPHAGUS:
 		return {"danger": 0.0, "reward": 0.0, "text": ""}
 	if rng.randf() < SARCO_MONSTER_CHANCE:
-		return {"danger": SARCO_MONSTER_DANGER, "reward": 0.0, "text": "the sarcophagus opens: a mummy!"}
-	return {"danger": 0.0, "reward": SARCO_REWARD, "text": "the sarcophagus held treasure"}
+		return {"danger": SARCO_MONSTER_DANGER, "reward": 0.0, "tier": 0, "text": "the sarcophagus opens: a mummy!"}
+	return {"danger": 0.0, "reward": SARCO_REWARD, "tier": SARCO_TIER, "text": "the sarcophagus held treasure"}
+
+
+## Treasure tiers a party picks up here (chest base slot + gold modifiers).
+func treasure_tiers() -> Array[int]:
+	var out: Array[int] = []
+	if kind == Kind.CHEST:
+		out.append(tier)
+	for m in modifiers:
+		if m.tier > 0:
+			out.append(m.tier)
+	return out
+
+
+## Enigma gate level of a door (0 = none).
+func gate_level() -> int:
+	var g := 0
+	for m in modifiers:
+		g = maxi(g, m.min_level)
+	return g
 
 
 ## Part of the room's combo key so adventurers learn "chest+needle" as a thing.

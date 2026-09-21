@@ -37,23 +37,35 @@ static func _ensure() -> void:
 		ContentDef.make("healing", "Source of healing", ContentDef.Category.SPECIAL, -2.0, 2.0, 3),
 		ContentDef.make("rest",    "Rest zone / tents", ContentDef.Category.SPECIAL, -1.0, 1.0, 3),
 		# --- Structural modifiers (door trap track, chest extra slots) -----
-		ContentDef.make("mod_secret", "Secret door",  ContentDef.Category.MODIFIER, 0.0, 0.0, 3),
-		ContentDef.make("mod_enigma", "Enigma door",  ContentDef.Category.MODIFIER, 1.0, 0.0, 3),
-		ContentDef.make("mod_lethal", "Lethal door",  ContentDef.Category.MODIFIER, 3.0, 0.0, 5),
-		ContentDef.make("mod_gold",   "Extra gold",   ContentDef.Category.MODIFIER, 0.0, 4.0, 3),
-		ContentDef.make("mod_needle", "Needle trap",  ContentDef.Category.MODIFIER, 2.0, 0.0, 2),
+		ContentDef.make("mod_secret",  "Secret door",    ContentDef.Category.MODIFIER, 0.0, 0.0, 3),
+		ContentDef.make("mod_enigma2", "Enigma door L2", ContentDef.Category.MODIFIER, 0.0, 0.0, 3),
+		ContentDef.make("mod_enigma3", "Enigma door L3", ContentDef.Category.MODIFIER, 0.0, 0.0, 5),
+		ContentDef.make("mod_lethal",  "Lethal door",    ContentDef.Category.MODIFIER, 3.0, 0.0, 5),
+		ContentDef.make("mod_gold",    "Extra gold",     ContentDef.Category.MODIFIER, 0.0, 4.0, 3),
+		ContentDef.make("mod_needle",  "Needle trap",    ContentDef.Category.MODIFIER, 2.0, 0.0, 2),
+		# --- Stair modifiers (the stair slot track) ------------------------
+		ContentDef.make("mod_rest",     "Rest area",     ContentDef.Category.MODIFIER, 0.0, 0.0, 4),
+		ContentDef.make("mod_teleport", "Teleport bind", ContentDef.Category.MODIFIER, 0.0, 0.0, 6),
 	]
 	# Which structural kinds accept which modifier (StructuralElement.Kind values).
 	var door := StructuralElement.Kind.DOOR
 	var chest := StructuralElement.Kind.CHEST
+	var stair := StructuralElement.Kind.STAIR
 	var mod_targets := {
-		"mod_secret": [door], "mod_enigma": [door], "mod_lethal": [door],
+		"mod_secret": [door], "mod_enigma2": [door], "mod_enigma3": [door], "mod_lethal": [door],
 		"mod_gold": [chest], "mod_needle": [chest, door],
+		"mod_rest": [stair], "mod_teleport": [stair],
 	}
 	var heals := {"healing": 0.6, "rest": 0.4}
+	var tiers := {"coins": 1, "treasure": 2, "relic": 3, "mod_gold": 1}
+	var gates := {"mod_enigma2": 2, "mod_enigma3": 3}
 	for d in list:
 		if heals.has(d.id):
 			d.heal = float(heals[d.id])
+		if tiers.has(d.id):
+			d.tier = int(tiers[d.id])
+		if gates.has(d.id):
+			d.min_level = int(gates[d.id])
 		if mod_targets.has(d.id):
 			var arr: Array[int] = []
 			arr.assign(mod_targets[d.id])

@@ -111,26 +111,32 @@ func _report(strat: String, runs: int, max_waves: int, base_seed: int) -> void:
 	var total_waves := 0
 	var total_levels := 0
 	var total_floors := 0
+	var total_pop := 0
+	var total_maxlvl := 0
 	for r in runs:
 		var s := GameSession.new(base_seed * 100000 + r)
 		_apply_strategy(s, strat)
 		while not s.game_over and s.wave <= max_waves:
 			# Re-invest each wave with the same policy (cheap approximation of a player).
 			_apply_strategy(s, strat)
-			var res := s.run_wave()
-			total_waves += 1
-			if res.ended_in_wipe():
-				total_wipes += 1
-			elif not res.reached_boss:
-				total_flees += 1
+			for res in s.run_wave():
+				total_waves += 1
+				if res.ended_in_wipe() and not res.stopped_at_gate:
+					total_wipes += 1
+				elif not res.reached_boss:
+					total_flees += 1
 		waves_survived += s.wave - 1
 		total_souls += s.souls
 		total_levels += s.boss.level
 		total_floors += s.graph.floors.size()
+		total_pop += s.town.alive().size()
+		for a in s.town.alive():
+			total_maxlvl = maxi(total_maxlvl, a.level)
 		if s.game_over:
 			boss_deaths += 1
-	print("strategy=%-12s boss killed %3d%% | avg waves %5.1f | avg souls %5.1f | boss lvl %4.1f | floors %3.1f | wipes %3d%% | escapes %3d%% of waves" % [
+	print("strategy=%-12s boss killed %3d%% | avg waves %5.1f | souls %5.1f | boss lvl %3.1f | floors %3.1f | town %4.1f (max L%d) | wipes %3d%% | escapes %3d%% of groups" % [
 		strat, roundi(100.0 * boss_deaths / runs), float(waves_survived) / runs,
 		float(total_souls) / runs, float(total_levels) / runs, float(total_floors) / runs,
+		float(total_pop) / runs, total_maxlvl,
 		roundi(100.0 * total_wipes / maxi(total_waves, 1)),
 		roundi(100.0 * total_flees / maxi(total_waves, 1))])

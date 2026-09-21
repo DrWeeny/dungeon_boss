@@ -18,6 +18,11 @@ enum Category { MONSTER, TRAP, REWARD, DECORATION, SPECIAL, MODIFIER }
 @export var cost: int = 0
 ## Wounds healed (member-equivalents) when a party wins the room. Specials only.
 @export var heal: float = 0.0
+## Treasure tier of a reward piece (0 = not a treasure). Tiers are what recruit
+## new adventurers when brought home; `reward` is the value felt on the way.
+@export var tier: int = 0
+## Enigma door modifier: members below this level cannot pass. 0 = no gate.
+@export var min_level: int = 0
 ## Per-adventurer-class attraction weight, e.g. {"priest": 1.5}. Missing class = 1.0.
 ## Skews which classes show up in the *next* party, not where the party walks.
 @export var attraction: Dictionary = {}

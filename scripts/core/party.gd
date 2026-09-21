@@ -1,52 +1,68 @@
 class_name Party
 extends RefCounted
 
-## An adventurer group. For the POC it is a single scalar power stat plus a class
-## mix and per-member levels. The class mix is only used by the monster-attraction
-## system; member levels matter in the boss fight (highest level alive = damage).
+## A group of persistent adventurers on one wave. Power is a scalar for the room
+## roll; member levels matter at enigma doors and in the boss fight.
 ##
 ## Damage is decimal, in member-equivalents: it accumulates as `wounds`; every
 ## full point kills the weakest member, the fraction left over is walking wounded
 ## (lower power, less appetite for the boss). Healing specials reduce wounds.
+##
+## Treasures are a counter of tiers actually picked up; only what a group brings
+## home recruits new adventurers (see Town).
 
 const CLASSES: Array[String] = ["warrior", "mage", "priest", "rogue"]
 const POWER_PER_MEMBER := 1.0
+## Levels above 1 add this much power each (a level-3 member = 1 + 2 x 0.5).
+const POWER_PER_LEVEL := 0.5
 ## Power lost per point of wounds (a fully wounded member fights at half strength).
 const WOUND_POWER := 0.5
-## Member level = wave +/- this much (never below 1).
-const LEVEL_SPREAD := 1
 
-var size: int = 4
-var level: int = 1                    # the wave's nominal level
-var base_power: float = 4.0
-var classes: Array[String] = []
-var member_levels: Array[int] = []    # sorted ascending; the weakest die first
+var members: Array[Adventurer] = []   # sorted by level ascending; the weakest die first
+var start_node: String = ""           # "" = the entrance
+var camped_before: bool = false
 var wounds: float = 0.0               # 0 <= wounds < 1 between kills
-var loot: float = 0.0
+var loot: float = 0.0                 # reward value carried (boss-door satisfaction)
+var treasures: Array[int] = []        # tiers of treasure pieces carried
 var alive: bool = true
 var members_lost: int = 0
+var went_home: Array[Adventurer] = [] # turned away at an enigma door, safe
+
+
+func _init(p_members: Array[Adventurer] = [], p_start: String = "") -> void:
+	members = p_members.duplicate()
+	members.sort_custom(func(a: Adventurer, b: Adventurer) -> bool: return a.level < b.level)
+	start_node = p_start
+	alive = members.size() > 0
+
+
+func size() -> int:
+	return members.size()
 
 
 ## Scalar power the opposed roll uses. Shrinks as members die or get hurt.
 func power() -> float:
-	return base_power + POWER_PER_MEMBER * size - WOUND_POWER * wounds
+	var p := 0.0
+	for a in members:
+		p += POWER_PER_MEMBER + POWER_PER_LEVEL * (a.level - 1)
+	return p - WOUND_POWER * wounds
 
 
 ## Highest-level adventurer still standing (0 when nobody is).
 func max_level_alive() -> int:
-	return member_levels[member_levels.size() - 1] if member_levels.size() > 0 else 0
+	return members[members.size() - 1].level if members.size() > 0 else 0
 
 
 func avg_level() -> float:
-	if member_levels.is_empty():
+	if members.is_empty():
 		return 0.0
-	return float(levels_alive()) / member_levels.size()
+	return float(levels_alive()) / members.size()
 
 
 func levels_alive() -> int:
 	var total := 0
-	for l in member_levels:
-		total += l
+	for a in members:
+		total += a.level
 	return total
 
 
@@ -66,55 +82,48 @@ func heal(amount: float) -> void:
 
 
 func lose_members(n: int) -> void:
-	n = mini(n, size)
+	n = mini(n, members.size())
 	for i in n:
-		member_levels.pop_front()
-		classes.pop_front()
-	size -= n
+		var a: Adventurer = members.pop_front()
+		a.alive = false
 	members_lost += n
-	if size <= 0:
+	if members.is_empty():
 		alive = false
 
 
+## Enigma door: members below `min_level` cannot pass and go home. Returns them.
+func split_below(min_level: int) -> Array[Adventurer]:
+	var stopped: Array[Adventurer] = []
+	var keep: Array[Adventurer] = []
+	for a in members:
+		if a.level < min_level:
+			stopped.append(a)
+		else:
+			keep.append(a)
+	members = keep
+	went_home.append_array(stopped)
+	if members.is_empty():
+		alive = false   # nobody went further; they are safe though (see WaveSim)
+	return stopped
+
+
+func take_treasures(tiers: Array[int], value: float) -> void:
+	treasures.append_array(tiers)
+	loot += value
+
+
+func total_treasure_tiers() -> int:
+	var t := 0
+	for x in treasures:
+		t += x
+	return t
+
+
 func describe() -> String:
-	var members: Array[String] = []
-	for i in size:
-		members.append("%s L%d" % [classes[i], member_levels[i]])
-	return "%d adventurers (power %.1f%s): %s" % [size, power(),
-		", wounds %.1f" % wounds if wounds > 0.05 else "", ", ".join(members)]
-
-
-## Spawn a party for a wave. `class_bias` maps class -> weight derived from the
-## dungeon's monster attraction table (see GameSession.class_bias()).
-static func spawn(wave: int, p_base_power: float, p_size: int,
-		rng: RandomNumberGenerator, class_bias: Dictionary = {}) -> Party:
-	var p := Party.new()
-	p.level = wave
-	p.size = p_size
-	p.base_power = p_base_power
-	var weights: Array[float] = []
-	for c in CLASSES:
-		weights.append(float(class_bias.get(c, 1.0)))
-	var members: Array = []
-	for i in p_size:
-		members.append({
-			"cls": CLASSES[_weighted_index(weights, rng)],
-			"lvl": maxi(1, wave + rng.randi_range(-LEVEL_SPREAD, LEVEL_SPREAD)),
-		})
-	members.sort_custom(func(a, b) -> bool: return a.lvl < b.lvl)
-	for m in members:
-		p.classes.append(m.cls)
-		p.member_levels.append(m.lvl)
-	return p
-
-
-static func _weighted_index(weights: Array[float], rng: RandomNumberGenerator) -> int:
-	var total := 0.0
-	for w in weights:
-		total += w
-	var r := rng.randf() * total
-	for i in weights.size():
-		r -= weights[i]
-		if r <= 0.0:
-			return i
-	return weights.size() - 1
+	var names: Array[String] = []
+	for a in members:
+		names.append(a.describe())
+	return "%d adventurers (power %.1f%s%s): %s" % [members.size(), power(),
+		", wounds %.1f" % wounds if wounds > 0.05 else "",
+		", %d treasure(s)" % treasures.size() if treasures.size() > 0 else "",
+		", ".join(names)]

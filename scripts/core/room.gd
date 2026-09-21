@@ -88,6 +88,43 @@ func reward() -> float:
 	return r
 
 
+## Treasure tiers picked up when the room is won (contents + chests).
+func treasure_tiers() -> Array[int]:
+	var out: Array[int] = []
+	for c in contents:
+		if c.tier > 0:
+			out.append(c.tier)
+	for s in structurals:
+		out.append_array(s.treasure_tiers())
+	return out
+
+
+## Highest enigma gate on this room's doors (0 = open to all levels).
+func gate_level() -> int:
+	var g := 0
+	for s in structurals:
+		if s.kind == StructuralElement.Kind.DOOR:
+			g = maxi(g, s.gate_level())
+	return g
+
+
+func _stair_has(mod_id: String) -> bool:
+	for s in structurals:
+		if s.kind == StructuralElement.Kind.STAIR and s.has_modifier(mod_id):
+			return true
+	return false
+
+
+## A stairwell with a rest area: wounded groups may camp here for a wave.
+func has_rest_area() -> bool:
+	return _stair_has("mod_rest")
+
+
+## A stairwell with a teleport bind: groups passing it start here next time.
+func has_teleport() -> bool:
+	return _stair_has("mod_teleport")
+
+
 ## Wounds a party recovers here after winning the room (healing / rest specials).
 func heal() -> float:
 	var h := 0.0

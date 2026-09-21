@@ -56,6 +56,13 @@ const UNSEEN_BOSS_FACTOR := 1.5
 ## Souls and magic harvested per adventurer that dies in the dungeon.
 const MAGIC_PER_SOUL := 3
 
+## Survivor XP: per point of room danger beaten, and per wave made it home.
+const XP_PER_DANGER := 0.5
+const XP_PER_WAVE := 2.0
+## A group camps at a rest area when this wounded or this small.
+const CAMP_WOUNDS := 0.5
+const CAMP_MIN_SIZE := 3
+
 
 class Encounter:
 	var node_id: String
@@ -70,9 +77,13 @@ class Encounter:
 	var outcome: WaveSim.Outcome
 	var damage: float = 0.0
 	var kills: int = 0
+	var treasures: Array[int] = []
 	var note: String = ""
 
 	func describe() -> String:
+		if danger <= 0.0:
+			return "%s: no threat, they walk through%s" % [room_name,
+				" and pick up %d treasure(s)" % treasures.size() if treasures.size() > 0 else ""]
 		var s := "%s: power %.1f+%.1f vs danger %.1f+%.1f -> margin %+.1f = %s" % [
 			room_name, group_power, roll_g, danger, roll_r, margin, WaveSim.OUTCOME_NAMES[outcome]]
 		if damage > 0.0:
@@ -90,6 +101,8 @@ class WaveResult:
 	var reached_boss_door: bool = false
 	var reached_boss: bool = false
 	var turned_back: bool = false   # at the door or after seeing the boss
+	var stopped_at_gate: bool = false   # whole group turned away by an enigma door
+	var camped_at: String = ""      # stairwell where they stopped for the wave
 	var boss_defeated: bool = false
 	var bought_out: bool = false
 	var boss_rounds: int = 0
@@ -109,15 +122,19 @@ class WaveResult:
 		if boss_defeated:
 			return "The boss has fallen after %d round(s). Game over." % boss_rounds
 		if bought_out:
-			return "The boss bought them off for %d magic; %d walk away (%d souls)." % [magic_spent, party.size, souls]
+			return "The boss bought them off for %d magic; %d walk away (%d souls)." % [magic_spent, party.size(), souls]
 		if reached_boss and ended_in_wipe():
 			return "They reached the boss and were destroyed in %d round(s), costing %d HP: %d souls. Next group will over-prepare." % [boss_rounds, boss_hp_lost, souls]
 		if turned_back:
-			return "%d turned back from the boss with %.0f loot (%d souls)%s." % [party.size, loot_taken, souls,
+			return "%d turned back from the boss with %d treasure(s) (%d souls)%s." % [party.size(), party.treasures.size(), souls,
 				" and will report what they saw" if reached_boss else ""]
+		if camped_at != "":
+			return "%d camp inside with %d treasure(s) (%d souls)." % [party.size(), party.treasures.size(), souls]
+		if stopped_at_gate:
+			return "Turned away by an enigma door; everyone goes home empty-handed (%d souls)." % souls
 		if ended_in_wipe():
 			return "Full wipe: %d souls harvested. Next group will over-prepare." % souls
-		return "%d of %d escaped with %.0f loot (%d souls)." % [party.size, party.size + party.members_lost, loot_taken, souls]
+		return "%d of %d escaped with %d treasure(s) (%d souls)." % [party.size(), party.size() + party.members_lost, party.treasures.size(), souls]
 
 
 var rng: RandomNumberGenerator
@@ -207,6 +224,7 @@ func resolve_room(node: DungeonGraph.DNode, party: Party, knowledge: AdventurerK
 	e.key = room.combo_key()
 	e.danger = room.danger()
 	e.reward = room.reward()
+	e.treasures = room.treasure_tiers()
 	if knowledge.check_surprise(node.id, e.key):
 		e.note = "SURPRISE: not the room they expected"
 	# Sarcophagus gamble is rolled fresh every visit.
@@ -215,8 +233,15 @@ func resolve_room(node: DungeonGraph.DNode, party: Party, knowledge: AdventurerK
 			var g := s.roll_gamble(rng)
 			e.danger += float(g.danger)
 			e.reward += float(g.reward)
+			if int(g.tier) > 0:
+				e.treasures.append(int(g.tier))
 			e.note = (e.note + "; " if e.note != "" else "") + str(g.text)
 	e.group_power = party.power()
+	if e.danger <= 0.0:
+		# Nothing here threatens them: no roll, they just walk through.
+		e.margin = CLEAN_MARGIN
+		e.outcome = Outcome.CLEAN_WIN
+		return e
 	e.roll_g = rng.randf_range(0.0, ROLL_MAX)
 	e.roll_r = rng.randf_range(0.0, ROLL_MAX)
 	e.margin = (e.group_power + e.roll_g) - (e.danger + e.roll_r)
@@ -236,14 +261,16 @@ func resolve_room(node: DungeonGraph.DNode, party: Party, knowledge: AdventurerK
 # --- the wave ---------------------------------------------------------------
 
 func run(graph: DungeonGraph, knowledge: AdventurerKnowledge, party: Party,
-		boss: Boss, magic_available: int, wave: int) -> WaveResult:
+		boss: Boss, magic_available: int, wave: int, xp_mult: float = 1.0) -> WaveResult:
 	var res := WaveResult.new()
 	res.wave = wave
 	res.party = party
-	res.lines.append("Wave %d: %s" % [wave, party.describe()])
+	var start := party.start_node if party.start_node != "" else graph.entry_id
+	res.lines.append("Wave %d: %s%s" % [wave, party.describe(),
+		"  (from %s)" % graph.node_at(start).label() if start != graph.entry_id else ""])
 
 	var visited: Array = []   # {node_id, key, danger, reward} in order, for the knowledge update
-	var cur := graph.entry_id
+	var cur := start
 	while true:
 		var options := graph.next_of(cur)
 		if options.is_empty():
@@ -264,7 +291,7 @@ func run(graph: DungeonGraph, knowledge: AdventurerKnowledge, party: Party,
 			res.path.append(cur)
 			res.reached_boss = true
 			# Inside: the real thing.
-			var real := float(boss.threat_level(party.size))
+			var real := float(boss.threat_level(party.size()))
 			var p2 := approach_probability(party, real)
 			res.lines.append("  They see the boss: real threat %.1f (%s) -> %d%% to fight" % [real, boss.describe(), roundi(p2 * 100.0)])
 			if rng.randf() >= p2:
@@ -279,46 +306,80 @@ func run(graph: DungeonGraph, knowledge: AdventurerKnowledge, party: Party,
 		if node.room == null:
 			continue
 
+		# Enigma door: members below the gate level go home; the rest push on.
+		var gate := node.room.gate_level()
+		if gate > 0:
+			var stopped := party.split_below(gate)
+			if stopped.size() > 0:
+				var names: Array[String] = []
+				for a in stopped:
+					names.append(a.describe())
+				res.lines.append("  %s: enigma door L%d stops %s" % [node.room.name, gate, ", ".join(names)])
+			if not party.alive:
+				res.stopped_at_gate = true
+				res.lines.append("  Nobody could solve it; they all go home.")
+				break
+
 		var e := resolve_room(node, party, knowledge)
 		res.encounters.append(e)
 		visited.append({"node_id": node.id, "key": e.key, "danger": e.danger, "reward": e.reward})
 
 		var retreating := false
+		var won := false
 		match e.outcome:
 			Outcome.CLEAN_WIN:
-				party.loot += e.reward
-				party.heal(node.room.heal())
+				won = true
 			Outcome.WIN_WITH_LOSSES:
 				e.kills = party.apply_damage(e.damage)
-				party.loot += e.reward
-				party.heal(node.room.heal())
+				won = party.alive
 			Outcome.FLEE:
 				e.kills = party.apply_damage(e.damage)
 				retreating = true
 			Outcome.WIPE:
-				e.kills = party.size
-				party.lose_members(party.size)
+				e.kills = party.size()
+				party.lose_members(party.size())
+		if won:
+			party.take_treasures(e.treasures, e.reward)
+			party.heal(node.room.heal())
+			for a in party.members:
+				a.gain_xp(e.danger * XP_PER_DANGER * xp_mult)
 		res.lines.append("  " + e.describe())
 		if retreating:
 			res.lines.append("  The group retreats toward the surface.")
 		if retreating or not party.alive:
 			break
 
+		# Stairwell tricks: teleport binds; a rest area lets a hurt group camp.
+		if node.kind == DungeonGraph.NodeKind.STAIR:
+			if node.room.has_teleport():
+				for a in party.members:
+					a.bind_node = node.id
+				res.lines.append("  They bind to the teleport stair: next time they start here.")
+			if node.room.has_rest_area() and (party.wounds >= CAMP_WOUNDS or party.size() < CAMP_MIN_SIZE):
+				res.camped_at = node.id
+				party.heal(1.0)
+				res.lines.append("  Hurt, they make camp at the rest area and will continue next wave.")
+				break
+
 	# Harvest.
 	res.surprises = knowledge.surprises_this_wave
 	res.souls = party.members_lost
 	res.magic_gained = res.souls * MAGIC_PER_SOUL
 	res.loot_taken = party.loot + res.magic_spent if party.alive else 0.0
+	if party.alive and res.camped_at == "":
+		for a in party.members:
+			a.waves_survived += 1
+			a.gain_xp(XP_PER_WAVE * xp_mult)
 
 	# Update what the next groups will believe.
-	if party.alive:
+	if party.alive or res.stopped_at_gate:
 		knowledge.report_survivors(visited, party.power())
 		if res.reached_boss:
-			knowledge.report_boss(float(boss.threat_level(party.size + party.members_lost)), AdventurerKnowledge.REPORT_RATE)
+			knowledge.report_boss(float(boss.threat_level(party.size() + party.members_lost)), AdventurerKnowledge.REPORT_RATE)
 	else:
 		knowledge.report_wipe(visited)
 		if res.reached_boss:
-			knowledge.report_boss(float(boss.threat_level(party.size + party.members_lost)), AdventurerKnowledge.RUMOUR_RATE)
+			knowledge.report_boss(float(boss.threat_level(party.size() + party.members_lost)), AdventurerKnowledge.RUMOUR_RATE)
 	res.lines.append("  " + res.summary())
 	if res.surprises > 0:
 		res.lines.append("  %d surprise(s): word spreads that this dungeon is unpredictable (+over-prep)." % res.surprises)
@@ -334,7 +395,7 @@ func _boss_fight(res: WaveResult, party: Party, boss: Boss, magic_available: int
 	res.lines.append("  BOSS FIGHT: %s vs %s" % [boss.describe(), party.describe()])
 	while party.alive and not boss.is_dead():
 		res.boss_rounds += 1
-		var killed := mini(prof.kills_per_round, party.size)
+		var killed := mini(prof.kills_per_round, party.size())
 		party.lose_members(killed)
 		res.boss_kills += killed
 		boss.add_shield(killed * prof.shield_per_kill)
@@ -352,13 +413,13 @@ func _boss_fight(res: WaveResult, party: Party, boss: Boss, magic_available: int
 		var lost := boss.take_damage(dmg)
 		res.boss_hp_lost += int(lost.hp)
 		res.lines.append("    round %d: boss kills %d (%d left)%s; %d damage -> %s." % [
-			res.boss_rounds, killed, party.size,
+			res.boss_rounds, killed, party.size(),
 			", raises %d zombie(s)" % (killed * prof.shield_per_kill) if prof.shield_per_kill > 0 else "",
 			dmg, boss.describe()])
 		if dmg == 0:
 			# Nobody left can scratch it; the boss finishes the rest.
-			res.boss_kills += party.size
-			party.lose_members(party.size)
+			res.boss_kills += party.size()
+			party.lose_members(party.size())
 			res.lines.append("    They cannot hurt it. The boss finishes them.")
 	if boss.is_dead():
 		res.boss_defeated = true

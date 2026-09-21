@@ -40,7 +40,9 @@ for terminal use).
 | `scripts/core/room.gd` | Free-size room; type emerges from contents; additive danger/reward; `combo_key()` |
 | `scripts/core/structural_element.gd` | Door / stair / chest / sarcophagus with independent modifier-slot tracks |
 | `scripts/core/dungeon_graph.gd` | Floor stack of directed graphs; hand-authored floor 0; `insert_floor()`, `build_room()` |
-| `scripts/core/party.gd` | Adventurer group: scalar power, class mix, per-member levels (weakest die first) |
+| `scripts/core/adventurer.gd` | One persistent adventurer: class, level, XP, camp / teleport bind |
+| `scripts/core/town.gd` | The population: recruitment from treasures, fear -> recruit level, party formation, camps |
+| `scripts/core/party.gd` | One group on one wave: power, wounds, treasure tiers, enigma split (weakest die first) |
 | `scripts/core/adventurer_knowledge.gd` | Beliefs per *location* and per *combo*; surprise -> unpredictability (50% report, wipe ×2, worth-it discount, decay) |
 | `scripts/core/wave_sim.gd` | Weighted junction choice, single opposed roll per room with outcome tiers, boss-room round loop |
 | `scripts/core/game_session.gd` | One playthrough: magic, souls = boss XP, levels, floors, difficulty/scrying, building (pure data, no scene) |
@@ -93,6 +95,21 @@ Rules layered on top of the spec (from the 2026-09-21 review):
   wounds, margin 0 costs a full member, a flee costs one. Wounds accumulate, every
   full point kills the weakest, the fraction cuts power (0.5 per point) and appetite
   for the boss. Healing / rest specials heal on a won room.
+- **The town** (`town.gd`). Adventurers are persistent: survivors keep XP and
+  levels (XP per room danger beaten and per wave home, x0.5 / x1 / x1.5 by
+  difficulty) and come back. Two flows feed the population: **treasures brought
+  home** recruit (1 basic recruit per 3 treasure tiers, a specialised +2-level
+  recruit when a tier-3 piece came back) and **fear** (souls, wipes, surprises)
+  raises the level new recruits arrive at. "Escaped" by itself recruits nobody.
+  The town never drops below 4. One group per non-boss floor sets out each wave,
+  population permitting; groups run one after another inside the wave.
+- **Corridor tricks.** Enigma door L2 / L3: members below that level go home,
+  the rest push on as a smaller group (or everyone goes home empty-handed).
+  Secret door: extra pull at the junction. Rest area (stair modifier): a hurt or
+  thinned group camps there and continues next wave from that floor. Teleport
+  stair (built off any room, 10 magic): drops straight to a chosen deeper floor
+  and binds the groups that use it, so they start there next time. Empty rooms
+  are walked through without a roll.
 
 ## Where the placeholder numbers live
 
@@ -102,7 +119,8 @@ Everything is a `const` at the top of the file that uses it:
 - Survivor report rate, wipe multiplier, worth-it discount, rumour decay: `adventurer_knowledge.gd`
 - Economy and wave scaling: `game_session.gd`
 - Boss HP / shield / buy-out / dungeon-army level: `boss_profile.gd`
-- Boss-door probabilities, loot/wound deterrents, decimal room damage: `wave_sim.gd`
+- Boss-door probabilities, loot/wound deterrents, decimal room damage, survivor XP, camp thresholds: `wave_sim.gd`
+- Recruitment ratios, fear per soul/wipe/surprise, population floor: `town.gd`
 - Per-content danger / reward / cost / attraction: `content_library.gd`
 
 ## Not in the POC (deferred per spec)

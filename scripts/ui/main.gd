@@ -24,7 +24,8 @@ func _ready() -> void:
 	_log_line("[b]Dungeon Boss POC[/b] - place contents, then run a wave. "
 		+ "Killing everyone makes the next group over-prepare; letting some flee with loot keeps them coming back. "
 		+ "Adventurers remember each spot: swapping a known room surprises them (more over-prep); "
-		+ "building a new path does not.")
+		+ "building a new path does not. Treasures brought home recruit new adventurers; "
+		+ "survivors level up and come back.")
 
 
 # --- layout -----------------------------------------------------------------
@@ -127,20 +128,21 @@ func _refresh() -> void:
 
 ## Next group, as seen from the entrance (when scrying is allowed).
 func _scry_text(s: GameSession) -> String:
+	var fc := s.next_wave_forecast()
+	var head := "Town: %d adventurers, up to %d group(s) of %d next wave" % [
+		int(fc.population), int(fc.parties), Town.PARTY_SIZE]
 	if not s.scrying_unlocked():
 		match s.difficulty:
 			GameSession.Difficulty.HARD:
-				return "Entrance scrying: never on Hard."
+				return head + ". Scrying: never on Hard."
 			_:
-				return "Entrance scrying: locked until boss level %d." % GameSession.SCRYING_LEVEL
-	var fc := s.next_party_forecast()
+				return head + ". Scrying: locked until boss level %d." % GameSession.SCRYING_LEVEL
 	var parts: Array[String] = []
 	for cls in Party.CLASSES:
 		parts.append("%s %d%%" % [cls, roundi(100.0 * float(fc.classes[cls]))])
 	var unp: float = s.knowledge.unpredictability
-	return "Entrance scrying: next group power ~%.1f, %d members: %s%s" % [
-		float(fc.power), GameSession.PARTY_SIZE, ", ".join(parts),
-		"  (unpredictability %.1f)" % unp if unp > 0.05 else ""]
+	return head + "\nScrying: " + s.town.describe() + "; new blood: " + ", ".join(parts) \
+		+ ("  (unpredictability %.1f)" % unp if unp > 0.05 else "")
 
 
 ## Live probability of each branch at every junction, given current expectations.
@@ -163,7 +165,7 @@ func _odds_text(s: GameSession) -> String:
 				branch_strs.append("%s %d%%" % [s.graph.node_at(node.next[i]).label(), roundi(100.0 * ws[i] / total)])
 			parts.append("%s -> %s" % [node.label(), " / ".join(branch_strs)])
 	return "Branch odds:  " + "   |   ".join(parts) + "\nBoss door: " + s.knowledge.describe_boss() \
-		+ " | real threat now %d (for a group of %d)" % [s.boss.threat_level(GameSession.PARTY_SIZE), GameSession.PARTY_SIZE]
+		+ " | real threat now %d (for a group of %d)" % [s.boss.threat_level(Town.PARTY_SIZE), Town.PARTY_SIZE]
 
 
 func _build_room_panel(node: DungeonGraph.DNode, s: GameSession) -> Control:
@@ -176,12 +178,15 @@ func _build_room_panel(node: DungeonGraph.DNode, s: GameSession) -> Control:
 	var exits: Array[String] = []
 	for nid in node.next:
 		exits.append(s.graph.node_at(nid).label())
+	var camped := ""
+	if s.town.camps.has(node.id):
+		camped = "   CAMPED HERE: %d adventurers" % (s.town.camps[node.id].members as Array).size()
 	var title := Label.new()
-	title.text = "%s  [%s, %d/%d slots]  danger %.0f  reward %.0f  ->  %s\n   adventurers: %s" % [
+	title.text = "%s  [%s, %d/%d slots]  danger %.0f  reward %.0f  ->  %s\n   adventurers: %s%s" % [
 		room.name, room.size_name(), room.contents.size(), room.slot_count(),
 		room.danger(), room.reward(),
 		", ".join(exits) if exits.size() > 0 else "dead end (they leave)",
-		s.knowledge.describe(node.id, room.combo_key())]
+		s.knowledge.describe(node.id, room.combo_key()), camped]
 	title.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	box.add_child(title)
 
@@ -267,6 +272,18 @@ func _build_room_panel(node: DungeonGraph.DNode, s: GameSession) -> Control:
 		if not GameState.build_room(node.id, sz, to):
 			_log_line("[color=orange]Cannot build (need %d magic)[/color]" % s.build_cost(sz)))
 	build.add_child(bbtn)
+	var targets := s.teleport_targets(node.id)
+	if targets.size() > 0:
+		var tp := OptionButton.new()
+		for fi in targets:
+			tp.add_item("Teleport stair to %s (%d magic)" % [s.graph.floors[fi].depth_label(), DungeonGraph.TELEPORT_COST], fi)
+		build.add_child(tp)
+		var tbtn := Button.new()
+		tbtn.text = "Build teleport"
+		tbtn.pressed.connect(func() -> void:
+			if not GameState.build_teleport(node.id, tp.get_selected_id()):
+				_log_line("[color=orange]Cannot build a teleport (need %d magic)[/color]" % DungeonGraph.TELEPORT_COST))
+		build.add_child(tbtn)
 	return panel
 
 
@@ -295,18 +312,19 @@ func _on_new_game() -> void:
 	_log_line("[b]New game (%s).[/b]" % GameSession.DIFFICULTY_NAMES[GameState.session.difficulty])
 
 
-func _on_wave_finished(res: WaveSim.WaveResult) -> void:
-	_log_line("")
-	for i in res.lines.size():
-		var line := res.lines[i]
-		if i == 0:
-			_log_line("[b]%s[/b]" % line)
-		elif line.begins_with("  " + res.summary()):
-			var col := "red" if res.ended_in_wipe() else ("yellow" if res.boss_defeated else "lime")
-			_log_line("[color=%s]%s[/color]" % [col, line])
-		else:
-			_log_line(line)
-	_log_line("  path: " + " > ".join(res.path))
+func _on_wave_finished(results: Array) -> void:
+	for res in results:
+		_log_line("")
+		for i in res.lines.size():
+			var line: String = res.lines[i]
+			if i == 0:
+				_log_line("[b]%s[/b]" % line)
+			elif line.begins_with("  " + res.summary()):
+				var col := "red" if res.ended_in_wipe() and not res.stopped_at_gate else ("yellow" if res.boss_defeated else "lime")
+				_log_line("[color=%s]%s[/color]" % [col, line])
+			else:
+				_log_line(line)
+		_log_line("  path: " + " > ".join(res.path))
 	for ev in GameState.session.events:
 		_log_line("[color=aqua]%s[/color]" % ev)
 
