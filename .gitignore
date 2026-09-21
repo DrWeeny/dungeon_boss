@@ -1,0 +1,8 @@
+# Godot
+.godot/
+*.import
+export_presets.cfg
+# IDE / local
+.idea/
+.venv/
+__pycache__/
