@@ -173,6 +173,10 @@ func run_wave() -> WaveSim.WaveResult:
 	# Harvest and grow.
 	magic += res.magic_gained + MAGIC_PER_WAVE - res.magic_spent
 	souls += res.souls
+	var dungeon_kills := res.souls - res.boss_kills
+	if dungeon_army_active() and dungeon_kills > 0:
+		boss.add_shield(dungeon_kills * boss.profile.shield_per_kill)
+		events.append("%d dungeon dead rise to join the army (shield %d)." % [dungeon_kills, boss.shield])
 	_apply_boss_levels()
 	boss.regen()
 
@@ -189,6 +193,12 @@ func run_wave() -> WaveSim.WaveResult:
 	return res
 
 
+## Late-game lich power-up: the dungeon's own dead join the shield.
+func dungeon_army_active() -> bool:
+	var lvl := boss.profile.dungeon_army_level
+	return lvl >= 0 and boss.level >= lvl
+
+
 func _apply_boss_levels() -> void:
 	var target := floori(float(souls) / XP_PER_LEVEL)
 	while boss.level < target:
@@ -201,6 +211,8 @@ func _apply_boss_levels() -> void:
 		events.append("Boss level %d: +%d HP, +1 modifier slot everywhere, chests +1 tier." % [boss.level, boss.profile.hp_per_level])
 		if boss.level == SCRYING_LEVEL and difficulty == Difficulty.NORMAL:
 			events.append("Scrying unlocked: the entrance now shows the next group.")
+		if boss.level == boss.profile.dungeon_army_level:
+			events.append("Power-up: from now on everyone who dies in the dungeon rises to guard the boss.")
 		if boss.level % FLOOR_EVERY_LEVELS == 0:
 			var f := graph.insert_floor(boss.level)
 			events.append("The dungeon grows: %s inserted above the boss." % f.depth_label())

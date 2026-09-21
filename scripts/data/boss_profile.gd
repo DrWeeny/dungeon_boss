@@ -24,6 +24,9 @@ extends Resource
 ## points of shield (zombies) that absorb damage before the boss's own HP.
 ## The army persists between waves.
 @export var shield_per_kill: int = 0
+## Late-game power-up: from this boss level on, adventurers killed anywhere in the
+## dungeon also join the shield. -1 = never.
+@export var dungeon_army_level: int = -1
 
 
 static func make(p_id: String, p_name: String, p_base_hp: int, p_hp_per_level: int,
@@ -43,7 +46,9 @@ static func make(p_id: String, p_name: String, p_base_hp: int, p_hp_per_level: i
 ## The POC boss: low health, but each adventurer it kills becomes a zombie
 ## (1 shield point) standing between the next blow and its phylactery.
 static func lich() -> BossProfile:
-	return make("lich", "Lich", 3, 1, 0, 1, 0, 1)
+	var b := make("lich", "Lich", 3, 1, 0, 1, 0, 1)
+	b.dungeon_army_level = 4
+	return b
 
 
 ## Future bosses, here only to show the rule set covers them (not selectable yet).

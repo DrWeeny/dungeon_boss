@@ -50,7 +50,10 @@ static func _ensure() -> void:
 		"mod_secret": [door], "mod_enigma": [door], "mod_lethal": [door],
 		"mod_gold": [chest], "mod_needle": [chest, door],
 	}
+	var heals := {"healing": 0.6, "rest": 0.4}
 	for d in list:
+		if heals.has(d.id):
+			d.heal = float(heals[d.id])
 		if mod_targets.has(d.id):
 			var arr: Array[int] = []
 			arr.assign(mod_targets[d.id])

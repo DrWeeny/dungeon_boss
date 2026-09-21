@@ -162,7 +162,8 @@ func _odds_text(s: GameSession) -> String:
 			for i in node.next.size():
 				branch_strs.append("%s %d%%" % [s.graph.node_at(node.next[i]).label(), roundi(100.0 * ws[i] / total)])
 			parts.append("%s -> %s" % [node.label(), " / ".join(branch_strs)])
-	return "Branch odds:  " + "   |   ".join(parts)
+	return "Branch odds:  " + "   |   ".join(parts) + "\nBoss door: " + s.knowledge.describe_boss() \
+		+ " | real threat now %d (for a group of %d)" % [s.boss.threat_level(GameSession.PARTY_SIZE), GameSession.PARTY_SIZE]
 
 
 func _build_room_panel(node: DungeonGraph.DNode, s: GameSession) -> Control:

@@ -80,7 +80,19 @@ Rules layered on top of the spec (from the 2026-09-21 review):
   differ by data: the **lich** raises a zombie (1 shield point, soaked before HP,
   persists) for every adventurer it kills in its room; a **dragon** can buy a party
   off with magic when a round would kill it; a **fallen knight** has combat skill.
-  Only the lich is selectable for now.
+  Only the lich is selectable for now. Lich late-game power-up (boss level 4): the
+  dungeon's own dead also join the zombie shield.
+- **Boss door decision.** At the door the group compares its average level with
+  what it believes the boss is: reported threat if a survivor has seen it,
+  otherwise the average danger of the rooms it crossed x1.5. Higher -> 85 %,
+  equal -> 50 %, lower -> 25 % chance to go in, minus loot satisfaction (loot vs
+  1.5 x total party levels) and wounds. Inside, it sees the real threat (the level
+  needed to kill the boss in the n-1 rounds it survives) and decides again; turning
+  back is a flee and the boss gets reported (50 %; 25 % as rumour after a wipe).
+- **Wounds.** Room losses are decimal member-equivalents: a barely-won fight
+  wounds, margin 0 costs a full member, a flee costs one. Wounds accumulate, every
+  full point kills the weakest, the fraction cuts power (0.5 per point) and appetite
+  for the boss. Healing / rest specials heal on a won room.
 
 ## Where the placeholder numbers live
 
@@ -89,7 +101,8 @@ Everything is a `const` at the top of the file that uses it:
 - Outcome tiers, roll size, junction weights: `wave_sim.gd`
 - Survivor report rate, wipe multiplier, worth-it discount, rumour decay: `adventurer_knowledge.gd`
 - Economy and wave scaling: `game_session.gd`
-- Boss HP / shield / buy-out: `boss_profile.gd`
+- Boss HP / shield / buy-out / dungeon-army level: `boss_profile.gd`
+- Boss-door probabilities, loot/wound deterrents, decimal room damage: `wave_sim.gd`
 - Per-content danger / reward / cost / attraction: `content_library.gd`
 
 ## Not in the POC (deferred per spec)

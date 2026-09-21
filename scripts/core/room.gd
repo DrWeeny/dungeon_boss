@@ -88,6 +88,14 @@ func reward() -> float:
 	return r
 
 
+## Wounds a party recovers here after winning the room (healing / rest specials).
+func heal() -> float:
+	var h := 0.0
+	for c in contents:
+		h += c.heal
+	return h
+
+
 ## Identity of this room's content combination. Adventurer knowledge is keyed by
 ## this, so moving a combo to another node carries its reputation with it.
 func combo_key() -> String:

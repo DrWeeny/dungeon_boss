@@ -16,6 +16,8 @@ enum Category { MONSTER, TRAP, REWARD, DECORATION, SPECIAL, MODIFIER }
 @export var reward: float = 0.0
 ## Magic spent to place it. Refunded on removal (free rearrangement between waves).
 @export var cost: int = 0
+## Wounds healed (member-equivalents) when a party wins the room. Specials only.
+@export var heal: float = 0.0
 ## Per-adventurer-class attraction weight, e.g. {"priest": 1.5}. Missing class = 1.0.
 ## Skews which classes show up in the *next* party, not where the party walks.
 @export var attraction: Dictionary = {}

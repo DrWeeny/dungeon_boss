@@ -12,6 +12,8 @@ extends RefCounted
 
 ## Survivors report roughly this fraction of what they actually experienced.
 const REPORT_RATE := 0.5
+## A group that vanished still leaves rumours, at this (lower) rate.
+const RUMOUR_RATE := 0.25
 ## A full party wipe multiplies that spot's believed dangerosity for the next wave.
 const WIPE_MULT := 2.0
 ## A "worth it" reward found later on the path scales down the believed danger
@@ -60,6 +62,9 @@ var locations: Dictionary = {}   # node_id -> Belief
 var combos: Dictionary = {}      # combo_key -> Belief
 var unpredictability: float = 0.0
 var surprises_this_wave: int = 0
+## What they believe the boss is (threat in level units), once someone has seen it.
+var boss_known: bool = false
+var boss_threat: float = 0.0
 
 
 func location(node_id: String) -> Belief:
@@ -139,6 +144,21 @@ func _blend(b: Belief, v: Dictionary, rate: float) -> void:
 	b.reward = lerpf(b.reward, float(v.reward), rate)
 	b.explored = true
 	b.expected_key = v.key
+
+
+## Someone saw the boss (or vanished in its room): blend the real threat in.
+func report_boss(real_threat: float, rate: float) -> void:
+	if not boss_known:
+		boss_threat = real_threat * rate
+		boss_known = true
+	else:
+		boss_threat = lerpf(boss_threat, real_threat, rate)
+
+
+func describe_boss() -> String:
+	if not boss_known:
+		return "boss unknown (judged by the rooms they cross)"
+	return "boss reported as threat ~%.1f" % boss_threat
 
 
 ## Called once per wave so old scares (and old grudges) do not dominate forever.
