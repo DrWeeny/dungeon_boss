@@ -47,8 +47,11 @@ for terminal use).
 | `scripts/core/wave_sim.gd` | Weighted junction choice, single opposed roll per room with outcome tiers, boss-room round loop |
 | `scripts/core/game_session.gd` | One playthrough: magic, souls = boss XP, levels, floors, difficulty/scrying, building (pure data, no scene) |
 | `scripts/core/game_state.gd` | Autoload wrapping the session with signals for the UI |
-| `scripts/ui/main.gd` + `scenes/main.tscn` | Placeholder screen: floors, rooms, slots, build-path row, entrance scrying, branch odds, wave log |
+| `scripts/core/dungeon_map.gd` | Tile-grid layout of one floor: room footprints, corridors, door tiles, markers |
+| `scripts/ui/map_view.gd` | Draws a floor and handles clicks; swaps in real tiles from `assets/tiles/` |
+| `scripts/ui/main.gd` + `scenes/main.tscn` | Placeholder screen: floor tabs, clickable map, selected room's slots and build row, scrying, branch odds, wave log |
 | `scripts/tools/sim_batch.gd` | Headless batch simulator for tuning |
+| `scripts/tools/screenshot.gd` | Renders the main scene and saves a PNG (`godot --path . -s scripts/tools/screenshot.gd`) |
 
 ## The POC dungeon
 
@@ -111,6 +114,22 @@ Rules layered on top of the spec (from the 2026-09-21 review):
   and binds the groups that use it, so they start there next time. Empty rooms
   are walked through without a roll.
 
+## The map
+
+Each floor is laid out on a tile grid, rebuilt from the graph after every change
+(`dungeon_map.gd`), so the rules never have to know about tiles. Room footprints
+follow the room size - **Small 2x2, Medium 4x4, Large 8x8** - with a 2x2 entrance
+and an **8x8 boss room**. Every connection is carved as a door tile plus an
+L-shaped corridor, so a room with two branches really shows two doors leading to
+two rooms, and building a new path adds another door to that room.
+
+Click a room on the map to edit it; the floor tabs switch levels. Door tiles are
+tinted by kind (plain gold, secret blue, enigma purple, lethal red) and the last
+group's route is highlighted after a wave.
+
+Art is placeholder colours and shapes. Drop PNGs into `assets/tiles/` (names
+listed in `assets/tiles/README.md`) and they are used automatically.
+
 ## Where the placeholder numbers live
 
 Everything is a `const` at the top of the file that uses it:
@@ -121,6 +140,7 @@ Everything is a `const` at the top of the file that uses it:
 - Boss HP / shield / buy-out / dungeon-army level: `boss_profile.gd`
 - Boss-door probabilities, loot/wound deterrents, decimal room damage, survivor XP, camp thresholds: `wave_sim.gd`
 - Recruitment ratios, fear per soul/wipe/surprise, population floor: `town.gd`
+- Tile size, room footprints, corridor gaps: `map_view.gd` / `dungeon_map.gd`
 - Per-content danger / reward / cost / attraction: `content_library.gd`
 
 ## Not in the POC (deferred per spec)

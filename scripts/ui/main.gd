@@ -1,19 +1,23 @@
 extends Control
 
 ## Placeholder POC screen, built in code:
-##   left  = resources, entrance scrying (next group), live branch odds, then every
-##           floor with its rooms / slots / structural modifier tracks / build-path row
+##   left  = resources, entrance scrying, branch odds, a floor map you click to
+##           pick a room, and that room's slots / modifier tracks / build row
 ##   right = the wave log
-## No art: this exists to tune the loop until it feels right.
+## Placeholder art only (see MapView for how to drop in real tiles).
 
 var _status: Label
 var _scry: Label
 var _odds: Label
+var _floor_bar: HBoxContainer
+var _map: MapView
 var _rooms_box: VBoxContainer
 var _log: RichTextLabel
 var _run_btn: Button
 var _difficulty: OptionButton
 var _selection: Dictionary = {}   # picker key -> OptionButton selected index
+var _floor_index: int = 0
+var _selected: String = ""
 
 
 func _ready() -> void:
@@ -25,7 +29,9 @@ func _ready() -> void:
 		+ "Killing everyone makes the next group over-prepare; letting some flee with loot keeps them coming back. "
 		+ "Adventurers remember each spot: swapping a known room surprises them (more over-prep); "
 		+ "building a new path does not. Treasures brought home recruit new adventurers; "
-		+ "survivors level up and come back.")
+		+ "survivors level up and come back.\n"
+		+ "[i]Click a room on the map to edit it. Each connection is a door, so a room with "
+		+ "two branches shows two doors.[/i]")
 
 
 # --- layout -----------------------------------------------------------------
@@ -39,7 +45,7 @@ func _build_layout() -> void:
 	add_child(margin)
 
 	var split := HSplitContainer.new()
-	split.split_offset = 760
+	split.split_offset = 90
 	margin.add_child(split)
 
 	# Left column.
@@ -52,7 +58,20 @@ func _build_layout() -> void:
 	_scry = _label(left, Color(0.95, 0.85, 0.6))
 	_odds = _label(left, Color(0.75, 0.9, 0.8))
 
+	_floor_bar = HBoxContainer.new()
+	_floor_bar.add_theme_constant_override("separation", 4)
+	left.add_child(_floor_bar)
+
+	var map_scroll := ScrollContainer.new()
+	map_scroll.custom_minimum_size = Vector2(0, 280)
+	left.add_child(map_scroll)
+
+	_map = MapView.new()
+	_map.room_clicked.connect(_on_room_clicked)
+	map_scroll.add_child(_map)
+
 	var scroll := ScrollContainer.new()
+	scroll.custom_minimum_size = Vector2(0, 150)
 	scroll.size_flags_vertical = Control.SIZE_EXPAND_FILL
 	scroll.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
 	left.add_child(scroll)
@@ -115,15 +134,51 @@ func _refresh() -> void:
 	_scry.text = _scry_text(s)
 	_odds.text = _odds_text(s)
 	_run_btn.disabled = s.game_over
+
+	# Keep the selection valid, and follow it to its floor.
+	_floor_index = clampi(_floor_index, 0, s.graph.floors.size() - 1)
+	if _selected != "" and s.graph.node_at(_selected) == null:
+		_selected = ""
+	if _selected != "":
+		_floor_index = s.graph.node_at(_selected).floor
+	elif s.graph.room_nodes_on(_floor_index).size() > 0:
+		_selected = s.graph.room_nodes_on(_floor_index)[0].id
+
+	_build_floor_bar(s)
+	_map.set_map(DungeonMap.build(s.graph, _floor_index))
+	_map.set_selected(_selected)
+
 	for child in _rooms_box.get_children():
 		child.queue_free()
+	var node := s.graph.node_at(_selected) if _selected != "" else null
+	if node == null or node.room == null:
+		var lbl := Label.new()
+		lbl.text = "Click a room on the map to edit it." if node == null else \
+			"%s - nothing to build here." % node.label()
+		_rooms_box.add_child(lbl)
+	else:
+		_rooms_box.add_child(_build_room_panel(node, s))
+
+
+func _build_floor_bar(s: GameSession) -> void:
+	for child in _floor_bar.get_children():
+		child.queue_free()
 	for f in s.graph.floors:
-		var header := Label.new()
-		header.text = "== %s ==" % f.depth_label() + ("  (boss)" if f == s.graph.boss_floor() else "")
-		header.add_theme_font_size_override("font_size", 18)
-		_rooms_box.add_child(header)
-		for node in s.graph.room_nodes_on(f.index):
-			_rooms_box.add_child(_build_room_panel(node, s))
+		var b := Button.new()
+		b.text = f.depth_label() + ("  (boss)" if f == s.graph.boss_floor() else "")
+		b.toggle_mode = true
+		b.button_pressed = f.index == _floor_index
+		var idx := f.index
+		b.pressed.connect(func() -> void:
+			_floor_index = idx
+			_selected = ""
+			_refresh())
+		_floor_bar.add_child(b)
+
+
+func _on_room_clicked(node_id: String) -> void:
+	_selected = node_id
+	_refresh()
 
 
 ## Next group, as seen from the entrance (when scrying is allowed).
@@ -325,6 +380,8 @@ func _on_wave_finished(results: Array) -> void:
 			else:
 				_log_line(line)
 		_log_line("  path: " + " > ".join(res.path))
+	if results.size() > 0:
+		_map.set_path(results[results.size() - 1].path)
 	for ev in GameState.session.events:
 		_log_line("[color=aqua]%s[/color]" % ev)
 
